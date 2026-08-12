@@ -13,6 +13,7 @@ Add-Type -AssemblyName System.Windows.Forms
 $organisation = 'Kiro-Race-Co'
 $gitHubPrefix = "https://github.com/$organisation/"
 $script:accessVerified = $false
+$script:forkStatus = 'NotInstalled'
 $script:currentStep = 1
 $script:ghCommand = $null
 $script:lastUpdatedRepositories = New-Object System.Collections.Generic.List[object]
@@ -53,6 +54,7 @@ $xaml = @'
             <TextBlock Text="Kiro-Race-Co" FontSize="18" Margin="0,4,0,18" Foreground="#17202A"/>
             <Button x:Name="LoginButton" Content="Sign in and verify access" HorizontalAlignment="Left" Background="#24292F" Foreground="White" BorderBrush="#24292F"/>
             <TextBlock x:Name="AccessStatus" Margin="0,14,0,0" TextWrapping="Wrap" Foreground="#52606D" Text="GitHub access has not been checked."/>
+            <TextBlock x:Name="ForkStatus" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#52606D" Text="Checking Fork's GitHub account..."/>
           </StackPanel>
         </Border>
       </StackPanel>
@@ -110,7 +112,7 @@ $xaml = @'
 
 $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xaml)))
 $controls = @{}
-'Step1Panel','Step2Panel','Step3Panel','Step4Panel','Step5Panel','Step1Marker','Step2Marker','Step3Marker','Step4Marker','Step5Marker','LoginButton','AccessStatus','FoldersList','AddFolderButton','RemoveFolderButton','ReviewGrid','ReviewStatus','UpdateProgress','ProgressStatus','SummaryGrid','SummaryStatus','RollbackButton','LogPathText','BackButton','NextButton','FooterText' | ForEach-Object { $controls[$_] = $window.FindName($_) }
+'Step1Panel','Step2Panel','Step3Panel','Step4Panel','Step5Panel','Step1Marker','Step2Marker','Step3Marker','Step4Marker','Step5Marker','LoginButton','AccessStatus','ForkStatus','FoldersList','AddFolderButton','RemoveFolderButton','ReviewGrid','ReviewStatus','UpdateProgress','ProgressStatus','SummaryGrid','SummaryStatus','RollbackButton','LogPathText','BackButton','NextButton','FooterText' | ForEach-Object { $controls[$_] = $window.FindName($_) }
 
 $folders = New-Object System.Collections.ObjectModel.ObservableCollection[string]
 $repositories = New-Object System.Collections.ObjectModel.ObservableCollection[object]
@@ -244,6 +246,17 @@ function Test-ForkGitHubAccount {
     return 'NotFound'
 }
 
+function Update-ForkStatusDisplay {
+    $script:forkStatus = Test-ForkGitHubAccount
+    $controls.ForkStatus.Text = switch ($script:forkStatus) {
+        'NotInstalled'   { "Fork was not detected on this machine; skipping the Fork account check." }
+        'Found'          { "Fork has a GitHub account configured." }
+        'NotFound'       { "Fork does not have a GitHub account configured. Open Fork -> Preferences -> Accounts and add your GitHub account, then click Sign in and verify access again." }
+        'CouldNotVerify' { "Could not verify Fork's GitHub account automatically. Check Fork -> Preferences -> Accounts manually." }
+    }
+    return $script:forkStatus
+}
+
 function Test-GitLabOrigin([string]$Origin) {
     return $Origin -match '(?i)gitlab'
 }
@@ -369,7 +382,8 @@ $controls.LoginButton.Add_Click({
     $controls.AccessStatus.Text = 'Complete the GitHub sign-in in your browser...'
     Start-Process -FilePath $script:ghCommand -ArgumentList @('auth', 'login', '--web', '--git-protocol', 'https', '--scopes', 'read:org') -Wait | Out-Null
     $script:accessVerified = Verify-Access
-    $controls.NextButton.IsEnabled = $script:accessVerified
+    Update-ForkStatusDisplay | Out-Null
+    $controls.NextButton.IsEnabled = $script:accessVerified -and ($script:forkStatus -ne 'NotFound')
 })
 $controls.AddFolderButton.Add_Click({ $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = 'Choose a folder containing Git repositories'; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK -and -not $folders.Contains($dialog.SelectedPath)) { $folders.Add($dialog.SelectedPath); $controls.NextButton.IsEnabled = $true } })
 $controls.RemoveFolderButton.Add_Click({ if ($null -ne $controls.FoldersList.SelectedItem) { $folders.Remove([string]$controls.FoldersList.SelectedItem); $controls.NextButton.IsEnabled = $folders.Count -gt 0 } })
@@ -380,5 +394,6 @@ $controls.NextButton.Add_Click({
     elseif ($script:currentStep -eq 3) { Update-SelectedRemotes }
 })
 $controls.BackButton.Add_Click({ if ($script:currentStep -eq 2) { Set-Step 1 }; if ($script:currentStep -eq 3) { Set-Step 2 } })
+Update-ForkStatusDisplay | Out-Null
 Set-Step 1
 if (-not $NoGui) { $window.ShowDialog() | Out-Null }
