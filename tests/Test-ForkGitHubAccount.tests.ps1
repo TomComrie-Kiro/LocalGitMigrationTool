@@ -46,6 +46,8 @@ try {
     Set-Content -LiteralPath (Join-Path $foundRoot 'Fork\accounts.json') -Value '[{"Type":"GitHub","Username":"someone"}]' -Encoding UTF8
     $env:LOCALAPPDATA = $foundRoot
     Assert-Equal -Expected 'Found' -Actual (Test-ForkGitHubAccount) -Because 'accounts.json has a GitHub type reference'
+    Assert-Equal -Expected 'Found' -Actual (Update-ForkStatusDisplay) -Because 'Update-ForkStatusDisplay returns the detected state'
+    Assert-Equal -Expected 'Fork has a GitHub account configured.' -Actual $controls.ForkStatus.Text -Because 'Update-ForkStatusDisplay renders the Found status text'
 
     # Found: reference is a github.com URL rather than a "Type" field
     $foundUrlRoot = Join-Path $fixtureRoot 'found-url'

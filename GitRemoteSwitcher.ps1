@@ -55,6 +55,7 @@ $xaml = @'
             <Button x:Name="LoginButton" Content="Sign in and verify access" HorizontalAlignment="Left" Background="#24292F" Foreground="White" BorderBrush="#24292F"/>
             <TextBlock x:Name="AccessStatus" Margin="0,14,0,0" TextWrapping="Wrap" Foreground="#52606D" Text="GitHub access has not been checked."/>
             <TextBlock x:Name="ForkStatus" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#52606D" Text="Checking Fork's GitHub account..."/>
+            <Button x:Name="RecheckForkButton" Content="Re-check Fork" HorizontalAlignment="Left" Margin="0,6,0,0"/>
           </StackPanel>
         </Border>
       </StackPanel>
@@ -112,7 +113,7 @@ $xaml = @'
 
 $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xaml)))
 $controls = @{}
-'Step1Panel','Step2Panel','Step3Panel','Step4Panel','Step5Panel','Step1Marker','Step2Marker','Step3Marker','Step4Marker','Step5Marker','LoginButton','AccessStatus','ForkStatus','FoldersList','AddFolderButton','RemoveFolderButton','ReviewGrid','ReviewStatus','UpdateProgress','ProgressStatus','SummaryGrid','SummaryStatus','RollbackButton','LogPathText','BackButton','NextButton','FooterText' | ForEach-Object { $controls[$_] = $window.FindName($_) }
+'Step1Panel','Step2Panel','Step3Panel','Step4Panel','Step5Panel','Step1Marker','Step2Marker','Step3Marker','Step4Marker','Step5Marker','LoginButton','AccessStatus','ForkStatus','RecheckForkButton','FoldersList','AddFolderButton','RemoveFolderButton','ReviewGrid','ReviewStatus','UpdateProgress','ProgressStatus','SummaryGrid','SummaryStatus','RollbackButton','LogPathText','BackButton','NextButton','FooterText' | ForEach-Object { $controls[$_] = $window.FindName($_) }
 
 $folders = New-Object System.Collections.ObjectModel.ObservableCollection[string]
 $repositories = New-Object System.Collections.ObjectModel.ObservableCollection[object]
@@ -217,6 +218,13 @@ function Find-GitHubReference($node) {
         }
         return $false
     }
+    if ($node -is [System.Collections.IDictionary]) {
+        foreach ($key in $node.Keys) {
+            if ($key -match 'github') { return $true }
+            if (Find-GitHubReference $node[$key]) { return $true }
+        }
+        return $false
+    }
     if ($node -is [System.Collections.IEnumerable]) {
         foreach ($item in $node) {
             if (Find-GitHubReference $item) { return $true }
@@ -233,12 +241,18 @@ function Test-ForkGitHubAccount {
     $accountsPath = Join-Path $forkDirectory 'accounts.json'
     if (-not (Test-Path -LiteralPath $accountsPath)) { return 'NotFound' }
 
-    $raw = Get-Content -LiteralPath $accountsPath -Raw -ErrorAction SilentlyContinue
+    try {
+        $raw = Get-Content -LiteralPath $accountsPath -Raw -ErrorAction Stop
+    } catch {
+        $Error.RemoveAt(0)
+        return 'CouldNotVerify'
+    }
     if ([string]::IsNullOrWhiteSpace($raw)) { return 'NotFound' }
 
     try {
         $data = $raw | ConvertFrom-Json -ErrorAction Stop
     } catch {
+        $Error.RemoveAt(0)
         return 'CouldNotVerify'
     }
 
@@ -382,6 +396,10 @@ $controls.LoginButton.Add_Click({
     $controls.AccessStatus.Text = 'Complete the GitHub sign-in in your browser...'
     Start-Process -FilePath $script:ghCommand -ArgumentList @('auth', 'login', '--web', '--git-protocol', 'https', '--scopes', 'read:org') -Wait | Out-Null
     $script:accessVerified = Verify-Access
+    Update-ForkStatusDisplay | Out-Null
+    $controls.NextButton.IsEnabled = $script:accessVerified -and ($script:forkStatus -ne 'NotFound')
+})
+$controls.RecheckForkButton.Add_Click({
     Update-ForkStatusDisplay | Out-Null
     $controls.NextButton.IsEnabled = $script:accessVerified -and ($script:forkStatus -ne 'NotFound')
 })
