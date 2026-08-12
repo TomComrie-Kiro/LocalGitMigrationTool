@@ -217,14 +217,14 @@ function Ensure-GitHubCli {
 
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($null -eq $winget) {
-        [System.Windows.MessageBox]::Show('Windows Package Manager (winget) was not found. Install GitHub CLI manually, then restart this tool.', 'Git Remote Switcher')
+        Show-Message -Id 'WingetNotFound' -Control $controls.AccessStatus | Out-Null
         return $false
     }
-    $controls.AccessStatus.Text = 'Installing GitHub CLI. Approve the Windows elevation prompt if shown...'
+    Show-Message -Id 'InstallingGitHubCli' -Control $controls.AccessStatus | Out-Null
     $process = Start-Process -FilePath $winget.Source -ArgumentList @('install', '--id', 'GitHub.cli', '--exact', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements') -Verb RunAs -Wait -PassThru
     $script:ghCommand = Find-GitHubCli
     if ($process.ExitCode -ne 0 -or $null -eq $script:ghCommand) {
-        [System.Windows.MessageBox]::Show('GitHub CLI could not be installed. Contact Tom Comrie for assistance.', 'Git Remote Switcher')
+        Show-Message -Id 'GitHubCliInstallFailed' -Control $controls.AccessStatus | Out-Null
         return $false
     }
     return $true
@@ -301,12 +301,13 @@ function Test-ForkGitHubAccount {
 
 function Update-ForkStatusDisplay {
     $script:forkStatus = Test-ForkGitHubAccount
-    $controls.ForkStatus.Text = switch ($script:forkStatus) {
-        'NotInstalled'   { "Fork was not detected on this machine; skipping the Fork account check." }
-        'Found'          { "Fork has a GitHub account configured." }
-        'NotFound'       { "Fork does not have a GitHub account configured. Open Fork -> Preferences -> Accounts and add your GitHub account, then click Sign in and verify access again." }
-        'CouldNotVerify' { "Could not verify Fork's GitHub account automatically. Check Fork -> Preferences -> Accounts manually." }
+    $messageId = switch ($script:forkStatus) {
+        'NotInstalled'   { 'ForkNotInstalled' }
+        'Found'          { 'ForkFound' }
+        'NotFound'       { 'ForkNotFound' }
+        'CouldNotVerify' { 'ForkCouldNotVerify' }
     }
+    Show-Message -Id $messageId -Control $controls.ForkStatus | Out-Null
     return $script:forkStatus
 }
 
@@ -351,27 +352,27 @@ function Scan-Repositories {
         }
     }
     $available = @($repositories | Where-Object TargetAvailable).Count
-    $controls.ReviewStatus.Text = "$discovered local Git repository(s) checked; $($repositories.Count) with a GitLab origin found; $available target repository(s) are available on GitHub."
+    Show-Message -Id 'ScanComplete' -Control $controls.ReviewStatus -FormatArgs @($discovered, $repositories.Count, $available) | Out-Null
     Set-Step 3
 }
 
 function Verify-Access {
     $gitVersion = [string](& git --version 2>$null)
-    if ($LASTEXITCODE -ne 0) { $controls.AccessStatus.Text = 'Git is not installed or is not available in PATH. Install Git for Windows, then restart this tool.'; return $false }
+    if ($LASTEXITCODE -ne 0) { Show-Message -Id 'GitNotInstalled' -Control $controls.AccessStatus | Out-Null; return $false }
     $user = [string](& $script:ghCommand api user --jq '.login' 2>$null)
     $userExitCode = $LASTEXITCODE
-    if ($userExitCode -ne 0) { $controls.AccessStatus.Text = 'GitHub sign-in was not completed.'; return $false }
+    if ($userExitCode -ne 0) { Show-Message -Id 'SignInNotCompleted' -Control $controls.AccessStatus | Out-Null; return $false }
     $state = [string](& $script:ghCommand api "user/memberships/orgs/$organisation" --jq '.state' 2>$null)
     $stateExitCode = $LASTEXITCODE
     if ($stateExitCode -ne 0) {
-        $controls.AccessStatus.Text = "Signed in as $($user.Trim()), but GitHub could not confirm $organisation membership. Sign in again and approve organisation access, or contact Tom Comrie."
+        Show-Message -Id 'OrgMembershipUnconfirmed' -Control $controls.AccessStatus -FormatArgs @($user.Trim(), $organisation) | Out-Null
         return $false
     }
     if ($state.Trim() -ne 'active') {
-        $controls.AccessStatus.Text = "Signed in as $($user.Trim()), but this account is not an active member of $organisation. Accept the organisation invitation for this exact account, or contact Tom Comrie."
+        Show-Message -Id 'OrgMembershipInactive' -Control $controls.AccessStatus -FormatArgs @($user.Trim(), $organisation) | Out-Null
         return $false
     }
-    $controls.AccessStatus.Text = "Signed in as $($user.Trim()). Your $organisation organisation access is confirmed."
+    Show-Message -Id 'SignedIn' -Control $controls.AccessStatus -FormatArgs @($user.Trim(), $organisation) | Out-Null
     Write-RunLog "PREFLIGHT Git=$($gitVersion.Trim()); GitHubUser=$($user.Trim()); Organisation=$organisation"
     return $true
 }
@@ -394,7 +395,7 @@ function Update-SelectedRemotes {
     $controls.UpdateProgress.Maximum = $selected.Count; $controls.UpdateProgress.Value = 0
     for ($index = 0; $index -lt $selected.Count; $index++) {
         $repository = $selected[$index]
-        $controls.ProgressStatus.Text = "Updating $($index + 1) of $($selected.Count): $($repository.Name)"
+        Show-Message -Id 'UpdateProgressMsg' -Control $controls.ProgressStatus -FormatArgs @($index + 1, $selected.Count, $repository.Name) | Out-Null
         $window.Dispatcher.Invoke([Action]{}, [System.Windows.Threading.DispatcherPriority]::Background)
         & git -C $repository.Path remote set-url origin $repository.New 2>$null
         if ($LASTEXITCODE -eq 0) {
@@ -410,7 +411,8 @@ function Update-SelectedRemotes {
     $successful = @($results | Where-Object Result -eq 'Succeeded').Count
     $failed = @($results | Where-Object Result -eq 'Failed').Count
     $notUpdated = @($results | Where-Object Result -eq 'Not updated').Count
-    $controls.SummaryStatus.Text = "$successful repository(s) updated successfully; $failed failed; $notUpdated not updated. Refresh Fork to use the new remotes."
+    $updateSummaryId = if ($failed -gt 0) { 'UpdateSummaryWithFailures' } else { 'UpdateSummarySuccess' }
+    Show-Message -Id $updateSummaryId -Control $controls.SummaryStatus -FormatArgs @($successful, $failed, $notUpdated) | Out-Null
     $controls.RollbackButton.Visibility = if ($script:lastUpdatedRepositories.Count -gt 0) { 'Visible' } else { 'Collapsed' }
     $controls.LogPathText.Text = "Support log: $script:logPath"
     Set-Step 5
@@ -426,13 +428,14 @@ function Restore-OriginalRemotes {
         if ($LASTEXITCODE -eq 0) { $restored++; Write-RunLog "RESTORED $($repository.Path) | $($repository.Current)" }
         else { Write-RunLog "RESTORE FAILED $($repository.Path)" }
     }
-    $controls.SummaryStatus.Text = "$restored of $($script:lastUpdatedRepositories.Count) original remote(s) restored. Refresh Fork to see the restored origins."
+    $restoreSummaryId = if ($restored -lt $script:lastUpdatedRepositories.Count) { 'RestoreSummaryWithFailures' } else { 'RestoreSummarySuccess' }
+    Show-Message -Id $restoreSummaryId -Control $controls.SummaryStatus -FormatArgs @($restored, $script:lastUpdatedRepositories.Count) | Out-Null
     $controls.RollbackButton.Visibility = 'Collapsed'
 }
 
 $controls.LoginButton.Add_Click({
     if (-not (Ensure-GitHubCli)) { return }
-    $controls.AccessStatus.Text = 'Complete the GitHub sign-in in your browser...'
+    Show-Message -Id 'SigningIn' -Control $controls.AccessStatus | Out-Null
     Start-Process -FilePath $script:ghCommand -ArgumentList @('auth', 'login', '--web', '--git-protocol', 'https', '--scopes', 'read:org') -Wait | Out-Null
     $script:accessVerified = Verify-Access
     Update-ForkStatusDisplay | Out-Null
