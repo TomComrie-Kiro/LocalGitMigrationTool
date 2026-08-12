@@ -206,6 +206,44 @@ function Ensure-GitHubCli {
     return $true
 }
 
+function Find-GitHubReference($node) {
+    if ($null -eq $node) { return $false }
+    if ($node -is [string]) { return $node -match 'github' }
+    if ($node -is [System.Management.Automation.PSCustomObject]) {
+        foreach ($property in $node.PSObject.Properties) {
+            if (Find-GitHubReference $property.Value) { return $true }
+        }
+        return $false
+    }
+    if ($node -is [System.Collections.IEnumerable]) {
+        foreach ($item in $node) {
+            if (Find-GitHubReference $item) { return $true }
+        }
+        return $false
+    }
+    return $false
+}
+
+function Test-ForkGitHubAccount {
+    $forkDirectory = Join-Path $env:LOCALAPPDATA 'Fork'
+    if (-not (Test-Path -LiteralPath $forkDirectory)) { return 'NotInstalled' }
+
+    $accountsPath = Join-Path $forkDirectory 'accounts.json'
+    if (-not (Test-Path -LiteralPath $accountsPath)) { return 'NotFound' }
+
+    $raw = Get-Content -LiteralPath $accountsPath -Raw -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrWhiteSpace($raw)) { return 'NotFound' }
+
+    try {
+        $data = $raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return 'CouldNotVerify'
+    }
+
+    if (Find-GitHubReference $data) { return 'Found' }
+    return 'NotFound'
+}
+
 function Test-GitLabOrigin([string]$Origin) {
     return $Origin -match '(?i)gitlab'
 }
