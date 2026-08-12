@@ -68,7 +68,7 @@ $xaml = @'
     <Grid Grid.Row="2">
       <StackPanel x:Name="Step1Panel">
         <TextBlock Text="Sign in to GitHub" FontSize="20" FontWeight="SemiBold" Foreground="#17202A"/>
-        <TextBlock Text="Sign in with the GitHub account registered to your @kiroraceco.com email address. You must first accept your Kiro-Race-Co invitation. This check confirms the correct account and organisation access; it does not change any repositories." TextWrapping="Wrap" Margin="0,8,0,18" Foreground="#52606D"/>
+        <TextBlock Text="Sign in with the GitHub account registered to your @kiroraceco.com email address. You must first accept your Kiro-Race-Co invitation before signing in here. This check only confirms the correct account and organisation access -- it does not change any repositories, and nothing is migrated until you reach step 4. The tool also checks whether Fork has a GitHub account configured, since Fork needs its own sign-in separate from this one; if it does not, you will not be able to continue until you add one in Fork and click Re-check Fork." TextWrapping="Wrap" Margin="0,8,0,18" Foreground="#52606D"/>
         <Border Background="White" BorderBrush="#DEE3E9" BorderThickness="1" CornerRadius="6" Padding="20">
           <StackPanel>
             <TextBlock Text="Target organisation" FontWeight="SemiBold"/>
@@ -83,7 +83,7 @@ $xaml = @'
 
       <StackPanel x:Name="Step2Panel" Visibility="Collapsed">
         <TextBlock Text="Add repository folders" FontSize="20" FontWeight="SemiBold" Foreground="#17202A"/>
-        <TextBlock Text="Add every top-level folder where you keep local Git repositories, for example C:\Projects or C:\Users\your-name\source. You can add more than one folder. The next step searches every subfolder recursively; do not select an individual .git folder. No repository setting is changed during this scan." TextWrapping="Wrap" Margin="0,8,0,18" Foreground="#52606D"/>
+        <TextBlock Text="Add every top-level folder where you keep local Git repositories, for example C:\Projects or C:\Users\your-name\source. You can add more than one folder. The next step searches every subfolder recursively, including nested repositories and Git worktrees; do not select an individual .git folder itself. Only repositories whose current origin points to GitLab are shown in the next step -- everything else is silently skipped. No repository setting is changed during this scan, so it is safe to point this at your entire workspace." TextWrapping="Wrap" Margin="0,8,0,18" Foreground="#52606D"/>
         <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <ListBox x:Name="FoldersList" Height="280" Background="White" BorderBrush="#DEE3E9" BorderThickness="1"/>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0"><Button x:Name="AddFolderButton" Content="Add folder" Background="#1F6FEB" Foreground="White" BorderBrush="#1F6FEB"/><Button x:Name="RemoveFolderButton" Content="Remove selected"/></StackPanel>
@@ -92,7 +92,7 @@ $xaml = @'
 
       <StackPanel x:Name="Step3Panel" Visibility="Collapsed">
         <TextBlock Text="Review remote changes" FontSize="20" FontWeight="SemiBold" Foreground="#17202A"/>
-        <TextBlock Text="Review every repository whose current origin points to GitLab. The new origin is always Kiro-Race-Co on GitHub. This scan changes nothing. A warning means the GitHub repository does not exist, this account cannot read it, or this account cannot push to it; leave it unchecked and contact Tom Comrie. Confirm that every expected repository is present before continuing." TextWrapping="Wrap" Margin="0,8,0,12" Foreground="#52606D"/>
+        <TextBlock Text="Review every repository whose current origin points to GitLab. The new origin is always the matching repository name under Kiro-Race-Co on GitHub. This scan changes nothing -- only the next step (Update selected remotes) actually modifies anything. A warning in the Target check column means the GitHub repository does not exist yet, this account cannot read it, this account cannot push to it, or another local repository already claims the same target name; leave warned rows unchecked and contact Tom Comrie before retrying. Repositories using Git LFS are flagged separately -- confirm the LFS objects were migrated to GitHub before relying on that repository there. Confirm that every repository you expect to see is present in this list before continuing." TextWrapping="Wrap" Margin="0,8,0,12" Foreground="#52606D"/>
         <DataGrid x:Name="ReviewGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" GridLinesVisibility="Horizontal" BorderBrush="#DEE3E9" Background="White" Height="360">
           <DataGrid.Columns>
             <DataGridCheckBoxColumn Header="Update" Binding="{Binding Selected, Mode=TwoWay}" Width="65"/>
@@ -108,14 +108,14 @@ $xaml = @'
 
       <StackPanel x:Name="Step4Panel" Visibility="Collapsed" VerticalAlignment="Center">
         <TextBlock Text="Updating remotes" FontSize="20" FontWeight="SemiBold" Foreground="#17202A" HorizontalAlignment="Center"/>
-        <TextBlock Text="The tool is changing only each selected repository's local origin URL. It does not edit files, commits, branches, tags, stashes, GitLab, or GitHub. Keep this window open until the summary appears." Margin="0,10,0,8" TextAlignment="Center" TextWrapping="Wrap" Foreground="#52606D"/>
+        <TextBlock Text="The tool is changing only each selected repository's local origin URL, one at a time. It does not edit files, commits, branches, tags, stashes, or anything on GitLab or GitHub itself -- this only affects how your local copy connects to its remote. A backup of every original origin is saved automatically before any change is made, so this step can be undone from the summary screen if needed. Keep this window open until the summary appears; closing it early may leave some repositories updated and others not." Margin="0,10,0,8" TextAlignment="Center" TextWrapping="Wrap" Foreground="#52606D"/>
         <TextBlock x:Name="ProgressStatus" Margin="0,0,0,16" TextAlignment="Center" Foreground="#52606D"/>
         <ProgressBar x:Name="UpdateProgress" Height="20" Minimum="0" Maximum="1" Value="0"/>
       </StackPanel>
 
       <StackPanel x:Name="Step5Panel" Visibility="Collapsed">
         <TextBlock Text="Migration summary" FontSize="20" FontWeight="SemiBold" Foreground="#17202A"/>
-        <TextBlock Text="Successful repositories are ready to use in Fork after it is refreshed. Failed or not-updated repositories have been left unchanged and can be safely retried after the issue is resolved." TextWrapping="Wrap" Margin="0,8,0,8" Foreground="#52606D"/>
+        <TextBlock Text="Successful repositories are ready to use in Fork after it is refreshed -- Fork reads the same Git configuration this tool just changed, so no separate Fork-side migration step is needed for those repositories. Failed or not-updated repositories have been left completely unchanged and can be safely retried by running this tool again after the underlying issue (shown in the Details column) is resolved. If something went wrong, Restore original remotes reverts every repository this run changed back to its original GitLab origin using the backup saved at the start of this step; support logs for this run are saved at the path shown below." TextWrapping="Wrap" Margin="0,8,0,8" Foreground="#52606D"/>
         <TextBlock x:Name="SummaryStatus" Margin="0,0,0,12" Foreground="#52606D"/>
         <DataGrid x:Name="SummaryGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" GridLinesVisibility="Horizontal" BorderBrush="#DEE3E9" Background="White" Height="360">
           <DataGrid.Columns><DataGridTextColumn Header="Repository" Binding="{Binding Name}" Width="180"/><DataGridTextColumn Header="Location" Binding="{Binding Path}" Width="*"/><DataGridTextColumn Header="Result" Binding="{Binding Result}" Width="180"/><DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="260"/></DataGrid.Columns>
