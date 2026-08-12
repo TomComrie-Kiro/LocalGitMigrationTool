@@ -3,6 +3,9 @@
 .SYNOPSIS
 A guided utility for switching local GitLab remotes to Kiro-Race-Co on GitHub.
 #>
+param(
+    [switch]$NoGui
+)
 
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
@@ -340,4 +343,4 @@ $controls.NextButton.Add_Click({
 })
 $controls.BackButton.Add_Click({ if ($script:currentStep -eq 2) { Set-Step 1 }; if ($script:currentStep -eq 3) { Set-Step 2 } })
 Set-Step 1
-$window.ShowDialog() | Out-Null
+if (-not $NoGui) { $window.ShowDialog() | Out-Null }
