@@ -15,6 +15,27 @@ $gitHubPrefix = "https://github.com/$organisation/"
 $script:accessVerified = $false
 $script:forkStatus = 'NotInstalled'
 $script:currentStep = 1
+$script:messages = @{
+    'GitNotInstalled'           = @{ Severity = 'Fatal';   Text = 'Git is not installed or is not available in PATH. Install Git for Windows, then restart this tool.' }
+    'SignInNotCompleted'        = @{ Severity = 'Error';   Text = 'GitHub sign-in was not completed.' }
+    'OrgMembershipUnconfirmed'  = @{ Severity = 'Error';   Text = 'Signed in as {0}, but GitHub could not confirm {1} membership. Sign in again and approve organisation access, or contact Tom Comrie.' }
+    'OrgMembershipInactive'     = @{ Severity = 'Error';   Text = 'Signed in as {0}, but this account is not an active member of {1}. Accept the organisation invitation for this exact account, or contact Tom Comrie.' }
+    'SignedIn'                  = @{ Severity = 'Info';    Text = 'Signed in as {0}. Your {1} organisation access is confirmed.' }
+    'SigningIn'                 = @{ Severity = 'Info';    Text = 'Complete the GitHub sign-in in your browser...' }
+    'InstallingGitHubCli'       = @{ Severity = 'Info';    Text = 'Installing GitHub CLI. Approve the Windows elevation prompt if shown...' }
+    'WingetNotFound'            = @{ Severity = 'Fatal';   Text = 'Windows Package Manager (winget) was not found. Install GitHub CLI manually, then restart this tool.' }
+    'GitHubCliInstallFailed'    = @{ Severity = 'Fatal';   Text = 'GitHub CLI could not be installed. Contact Tom Comrie for assistance.' }
+    'ForkNotInstalled'          = @{ Severity = 'Info';    Text = 'Fork was not detected on this machine; skipping the Fork account check.' }
+    'ForkFound'                 = @{ Severity = 'Info';    Text = 'Fork has a GitHub account configured.' }
+    'ForkNotFound'              = @{ Severity = 'Warning'; Text = 'Fork does not have a GitHub account configured. Open Fork -> Preferences -> Accounts, add your GitHub account, then click Re-check Fork.' }
+    'ForkCouldNotVerify'        = @{ Severity = 'Info';    Text = "Could not verify Fork's GitHub account automatically. Check Fork -> Preferences -> Accounts manually." }
+    'ScanComplete'              = @{ Severity = 'Info';    Text = '{0} local Git repository(s) checked; {1} with a GitLab origin found; {2} target repository(s) are available on GitHub.' }
+    'UpdateProgressMsg'         = @{ Severity = 'Info';    Text = 'Updating {0} of {1}: {2}' }
+    'UpdateSummarySuccess'      = @{ Severity = 'Info';    Text = '{0} repository(s) updated successfully; {1} failed; {2} not updated. Refresh Fork to use the new remotes.' }
+    'UpdateSummaryWithFailures' = @{ Severity = 'Warning'; Text = '{0} repository(s) updated successfully; {1} failed; {2} not updated. Refresh Fork to use the new remotes.' }
+    'RestoreSummarySuccess'     = @{ Severity = 'Info';    Text = '{0} of {1} original remote(s) restored. Refresh Fork to see the restored origins.' }
+    'RestoreSummaryWithFailures' = @{ Severity = 'Warning'; Text = '{0} of {1} original remote(s) restored. Refresh Fork to see the restored origins.' }
+}
 $script:ghCommand = $null
 $script:lastUpdatedRepositories = New-Object System.Collections.Generic.List[object]
 $script:backupPath = $null
@@ -207,6 +228,24 @@ function Ensure-GitHubCli {
         return $false
     }
     return $true
+}
+
+function Show-Message([string]$Id, $Control, [object[]]$FormatArgs) {
+    $entry = $script:messages[$Id]
+    $text = if ($FormatArgs) { $entry.Text -f $FormatArgs } else { $entry.Text }
+    $color = switch ($entry.Severity) {
+        'Info'    { '#52606D' }
+        'Warning' { '#9A6700' }
+        'Error'   { '#B42318' }
+        'Fatal'   { '#B42318' }
+    }
+    $Control.Text = $text
+    $Control.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($color)
+    Write-RunLog "$($entry.Severity.ToUpper()) [$Id] $text"
+    if ($entry.Severity -eq 'Fatal' -and -not $NoGui) {
+        [System.Windows.MessageBox]::Show($text, 'Git Remote Switcher', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+    }
+    return $entry.Severity
 }
 
 function Find-GitHubReference($node) {
