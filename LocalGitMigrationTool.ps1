@@ -17,6 +17,7 @@ $script:forkStatus = 'NotInstalled'
 $script:currentStep = 1
 $script:githubUser = $null
 $completionTrackerRelativePath = '08_IT\_Software\LocalGitMigrationTool\Log\Complete.json'
+$completionTrackerPaths = @('\\uk-files-01\dropbox\08_IT\_Software\LocalGitMigrationTool\Log\Complete.json')
 $completionTrackerDriveLetters = @('S', 'R', 'Z')
 $script:messages = @{
     'GitNotInstalled'           = @{ Severity = 'Fatal';   Text = 'Git is not installed or is not available in PATH. Install Git for Windows, then restart this tool.' }
@@ -153,6 +154,9 @@ function Write-RunLog([string]$Message) {
 }
 
 function Find-CompletionTrackerPath {
+    foreach ($candidate in $completionTrackerPaths) {
+        if (Test-Path -LiteralPath (Split-Path -Parent $candidate)) { return $candidate }
+    }
     foreach ($drive in $completionTrackerDriveLetters) {
         $candidate = "${drive}:\$completionTrackerRelativePath"
         if (Test-Path -LiteralPath (Split-Path -Parent $candidate)) { return $candidate }
