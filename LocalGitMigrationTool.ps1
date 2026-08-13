@@ -42,12 +42,12 @@ $script:messages = @{
 $script:ghCommand = $null
 $script:lastUpdatedRepositories = New-Object System.Collections.Generic.List[object]
 $script:backupPath = $null
-$script:logPath = Join-Path $env:LOCALAPPDATA "KiroRaceCo\GitRemoteSwitcher\logs\run-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$script:logPath = Join-Path $env:LOCALAPPDATA "KiroRaceCo\LocalGitMigrationTool\logs\run-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Git Remote Switcher" Height="850" Width="1060" MinHeight="720" MinWidth="820"
+         Title="Local Git Migration Tool" Height="850" Width="1060" MinHeight="720" MinWidth="820"
         WindowStartupLocation="CenterScreen" Background="#F7F8FA" FontFamily="Segoe UI">
   <Window.Resources>
     <Style TargetType="Button"><Setter Property="Padding" Value="15,7"/><Setter Property="Margin" Value="0,0,8,0"/></Style>
@@ -56,7 +56,7 @@ $xaml = @'
   <Grid Margin="30">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,16">
-      <TextBlock Text="Git Remote Switcher" FontSize="27" FontWeight="SemiBold" Foreground="#17202A"/>
+      <TextBlock Text="Local Git Migration Tool" FontSize="27" FontWeight="SemiBold" Foreground="#17202A"/>
       <TextBlock Text="Move existing local repositories from GitLab to GitHub without changing their contents." Margin="0,5,0,0" Foreground="#52606D" FontSize="14"/>
     </StackPanel>
     <Grid Grid.Row="1" Margin="0,0,0,16">
@@ -297,7 +297,7 @@ function Show-Message([string]$Id, $Control, [object[]]$FormatArgs) {
     $Control.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($color)
     Write-RunLog "$($entry.Severity.ToUpper()) [$Id] $text"
     if ($entry.Severity -eq 'Fatal' -and -not $NoGui) {
-        [System.Windows.MessageBox]::Show($text, 'Git Remote Switcher', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+        [System.Windows.MessageBox]::Show($text, 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
     }
     return $entry.Severity
 }
@@ -436,7 +436,7 @@ function Update-SelectedRemotes {
     $selected = @($repositories | Where-Object Selected)
     $results.Clear()
     $script:lastUpdatedRepositories.Clear()
-    $backupDirectory = Join-Path $env:LOCALAPPDATA 'KiroRaceCo\GitRemoteSwitcher\backups'
+    $backupDirectory = Join-Path $env:LOCALAPPDATA 'KiroRaceCo\LocalGitMigrationTool\backups'
     if (-not (Test-Path -LiteralPath $backupDirectory)) { New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null }
     $script:backupPath = Join-Path $backupDirectory "remote-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     @($selected | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Path = $_.Path; OriginalOrigin = $_.Current; NewOrigin = $_.New } }) |

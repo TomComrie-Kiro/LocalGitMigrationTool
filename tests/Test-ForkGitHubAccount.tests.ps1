@@ -6,7 +6,7 @@ Standalone assertions for Test-ForkGitHubAccount. Run with:
 #>
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $repoRoot 'GitRemoteSwitcher.ps1') -NoGui
+. (Join-Path $repoRoot 'LocalGitMigrationTool.ps1') -NoGui
 
 function Assert-Equal([string]$Expected, [string]$Actual, [string]$Because) {
     if ($Actual -ne $Expected) {

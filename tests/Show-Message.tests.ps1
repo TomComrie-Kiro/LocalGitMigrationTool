@@ -6,7 +6,7 @@ Standalone assertions for Show-Message and the message catalog. Run with:
 #>
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $repoRoot 'GitRemoteSwitcher.ps1') -NoGui
+. (Join-Path $repoRoot 'LocalGitMigrationTool.ps1') -NoGui
 
 function Assert-Equal([string]$Expected, [string]$Actual, [string]$Because) {
     if ($Actual -ne $Expected) {
@@ -32,7 +32,7 @@ foreach ($id in $script:messages.Keys) {
 # must resolve to a real catalog entry. (Dynamically-selected IDs via a switch/if into a
 # variable aren't covered by this static check -- those are exercised by the functional
 # tests elsewhere instead.)
-$scriptContent = Get-Content -LiteralPath (Join-Path $repoRoot 'GitRemoteSwitcher.ps1') -Raw
+$scriptContent = Get-Content -LiteralPath (Join-Path $repoRoot 'LocalGitMigrationTool.ps1') -Raw
 $idReferences = [regex]::Matches($scriptContent, "Show-Message -Id '([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
 foreach ($id in $idReferences) {
     Assert-True ($script:messages.ContainsKey($id)) "referenced message id '$id' exists in the catalog"
