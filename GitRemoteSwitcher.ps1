@@ -15,6 +15,9 @@ $gitHubPrefix = "https://github.com/$organisation/"
 $script:accessVerified = $false
 $script:forkStatus = 'NotInstalled'
 $script:currentStep = 1
+$script:githubUser = $null
+$completionTrackerRelativePath = '08_IT\_Software\LocalGitMigrationTool\Log\Complete.json'
+$completionTrackerDriveLetters = @('S', 'R', 'Z')
 $script:messages = @{
     'GitNotInstalled'           = @{ Severity = 'Fatal';   Text = 'Git is not installed or is not available in PATH. Install Git for Windows, then restart this tool.' }
     'SignInNotCompleted'        = @{ Severity = 'Error';   Text = 'GitHub sign-in was not completed.' }
@@ -44,7 +47,7 @@ $script:logPath = Join-Path $env:LOCALAPPDATA "KiroRaceCo\GitRemoteSwitcher\logs
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Git Remote Switcher" Height="670" Width="1060" MinHeight="560" MinWidth="820"
+        Title="Git Remote Switcher" Height="850" Width="1060" MinHeight="720" MinWidth="820"
         WindowStartupLocation="CenterScreen" Background="#F7F8FA" FontFamily="Segoe UI">
   <Window.Resources>
     <Style TargetType="Button"><Setter Property="Padding" Value="15,7"/><Setter Property="Margin" Value="0,0,8,0"/></Style>
@@ -147,6 +150,56 @@ function Write-RunLog([string]$Message) {
     $directory = Split-Path -Parent $script:logPath
     if (-not (Test-Path -LiteralPath $directory)) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
     Add-Content -LiteralPath $script:logPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
+}
+
+function Find-CompletionTrackerPath {
+    foreach ($drive in $completionTrackerDriveLetters) {
+        $candidate = "${drive}:\$completionTrackerRelativePath"
+        if (Test-Path -LiteralPath (Split-Path -Parent $candidate)) { return $candidate }
+    }
+    return $null
+}
+
+function Update-CompletionTracker([string]$GitHubUser, [string[]]$Repositories) {
+    if ([string]::IsNullOrWhiteSpace($GitHubUser) -or $Repositories.Count -eq 0) { return }
+    $trackerPath = Find-CompletionTrackerPath
+    if ($null -eq $trackerPath) {
+        Write-RunLog "TRACKER not found on any of: $($completionTrackerDriveLetters -join ', ')"
+        return
+    }
+    $maxAttempts = 30
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $stream = $null
+        try {
+            $stream = [System.IO.File]::Open($trackerPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            $reader = New-Object System.IO.StreamReader($stream)
+            $raw = $reader.ReadToEnd()
+            $data = [ordered]@{}
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                foreach ($property in ($raw | ConvertFrom-Json).PSObject.Properties) { $data[$property.Name] = $property.Value }
+            }
+            $existingRepos = if ($data.Contains($GitHubUser)) { @($data[$GitHubUser].Repositories) } else { @() }
+            $data[$GitHubUser] = [ordered]@{
+                LastUpdated  = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+                Machine      = $env:COMPUTERNAME
+                Repositories = @($existingRepos + $Repositories | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
+            }
+            $stream.SetLength(0)
+            $writer = New-Object System.IO.StreamWriter($stream)
+            $writer.Write(($data | ConvertTo-Json -Depth 6))
+            $writer.Flush()
+            Write-RunLog "TRACKER updated $trackerPath for $GitHubUser ($($Repositories.Count) repo(s) this run)"
+            return
+        } catch [System.IO.IOException] {
+            Start-Sleep -Milliseconds 400
+        } catch {
+            Write-RunLog "TRACKER update failed: $($_.Exception.Message)"
+            return
+        } finally {
+            if ($null -ne $stream) { $stream.Close() }
+        }
+    }
+    Write-RunLog "TRACKER could not acquire an exclusive lock on $trackerPath after $maxAttempts attempts"
 }
 
 function Set-Step([int]$Step) {
@@ -374,6 +427,7 @@ function Verify-Access {
         return $false
     }
     Show-Message -Id 'SignedIn' -Control $controls.AccessStatus -FormatArgs @($user.Trim(), $organisation) | Out-Null
+    $script:githubUser = $user.Trim()
     Write-RunLog "PREFLIGHT Git=$($gitVersion.Trim()); GitHubUser=$($user.Trim()); Organisation=$organisation"
     return $true
 }
@@ -396,7 +450,7 @@ function Update-SelectedRemotes {
     $controls.UpdateProgress.Maximum = $selected.Count; $controls.UpdateProgress.Value = 0
     for ($index = 0; $index -lt $selected.Count; $index++) {
         $repository = $selected[$index]
-        Show-Message -Id 'UpdateProgressMsg' -Control $controls.ProgressStatus -FormatArgs @($index + 1, $selected.Count, $repository.Name) | Out-Null
+        Show-Message -Id 'UpdateProgressMsg' -Control $controls.ProgressStatus -FormatArgs @(($index + 1), $selected.Count, $repository.Name) | Out-Null
         $window.Dispatcher.Invoke([Action]{}, [System.Windows.Threading.DispatcherPriority]::Background)
         & git -C $repository.Path remote set-url origin $repository.New 2>$null
         if ($LASTEXITCODE -eq 0) {
@@ -414,6 +468,8 @@ function Update-SelectedRemotes {
     $notUpdated = @($results | Where-Object Result -eq 'Not updated').Count
     $updateSummaryId = if ($failed -gt 0) { 'UpdateSummaryWithFailures' } else { 'UpdateSummarySuccess' }
     Show-Message -Id $updateSummaryId -Control $controls.SummaryStatus -FormatArgs @($successful, $failed, $notUpdated) | Out-Null
+    $succeededRepoNames = @($results | Where-Object Result -eq 'Succeeded' | ForEach-Object { $_.Name })
+    Update-CompletionTracker -GitHubUser $script:githubUser -Repositories $succeededRepoNames
     $controls.RollbackButton.Visibility = if ($script:lastUpdatedRepositories.Count -gt 0) { 'Visible' } else { 'Collapsed' }
     $controls.LogPathText.Text = "Support log: $script:logPath"
     Set-Step 5
