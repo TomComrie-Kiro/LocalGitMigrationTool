@@ -7,6 +7,7 @@ Standalone assertions for Show-Message and the message catalog. Run with:
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $repoRoot 'LocalGitMigrationTool.ps1') -NoGui
+$script:logPath = Join-Path $env:TEMP "show-message-tests-$PID.log"
 
 function Assert-Equal([string]$Expected, [string]$Actual, [string]$Because) {
     if ($Actual -ne $Expected) {

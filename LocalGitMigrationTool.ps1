@@ -16,9 +16,9 @@ $script:accessVerified = $false
 $script:forkStatus = 'NotInstalled'
 $script:currentStep = 1
 $script:githubUser = $null
-$completionTrackerRelativePath = '08_IT\_Software\LocalGitMigrationTool\Log\Complete.json'
-$completionTrackerPaths = @('\\uk-files-01\dropbox\08_IT\_Software\LocalGitMigrationTool\Log\Complete.json')
-$completionTrackerDriveLetters = @('S', 'R', 'Z')
+$sharedLogRelativePath = '_Software\LocalGitMigrationTool\Log'
+$sharedLogDirectories = @('\\uk-files-01\dropbox\08_IT\_Software\LocalGitMigrationTool\Log')
+$sharedLogDriveLetters = @('S', 'R', 'Z')
 $script:messages = @{
     'GitNotInstalled'           = @{ Severity = 'Fatal';   Text = 'Git is not installed or is not available in PATH. Install Git for Windows, then restart this tool.' }
     'SignInNotCompleted'        = @{ Severity = 'Error';   Text = 'GitHub sign-in was not completed.' }
@@ -43,7 +43,10 @@ $script:messages = @{
 $script:ghCommand = $null
 $script:lastUpdatedRepositories = New-Object System.Collections.Generic.List[object]
 $script:backupPath = $null
-$script:logPath = Join-Path $env:LOCALAPPDATA "KiroRaceCo\LocalGitMigrationTool\logs\run-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$script:logDirectory = $null
+$script:logStartedAt = Get-Date
+$script:logPath = $null
+if ($NoGui) { $script:logPath = Join-Path $env:TEMP "LocalGitMigrationTool-test-$PID.log" }
 
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -148,62 +151,72 @@ $controls.ReviewGrid.ItemsSource = $repositories
 $controls.SummaryGrid.ItemsSource = $results
 
 function Write-RunLog([string]$Message) {
-    $directory = Split-Path -Parent $script:logPath
-    if (-not (Test-Path -LiteralPath $directory)) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
     Add-Content -LiteralPath $script:logPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
 }
 
-function Find-CompletionTrackerPath {
-    foreach ($candidate in $completionTrackerPaths) {
-        if (Test-Path -LiteralPath (Split-Path -Parent $candidate)) { return $candidate }
+function Test-SharedLogDirectory([string]$Directory) {
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) { return $false }
+    $probePath = Join-Path $Directory ".local-git-migration-tool-$([guid]::NewGuid().ToString('N')).tmp"
+    try {
+        [System.IO.File]::WriteAllText($probePath, '')
+        Remove-Item -LiteralPath $probePath -Force
+        return $true
+    } catch {
+        return $false
     }
-    foreach ($drive in $completionTrackerDriveLetters) {
-        $candidate = "${drive}:\$completionTrackerRelativePath"
-        if (Test-Path -LiteralPath (Split-Path -Parent $candidate)) { return $candidate }
+}
+
+function Find-SharedLogDirectory {
+    foreach ($candidate in $sharedLogDirectories) {
+        if (Test-SharedLogDirectory $candidate) { return $candidate }
+    }
+    foreach ($drive in $sharedLogDriveLetters) {
+        $candidate = "${drive}:\08_IT\$sharedLogRelativePath"
+        if (Test-SharedLogDirectory $candidate) { return $candidate }
     }
     return $null
 }
 
-function Update-CompletionTracker([string]$GitHubUser, [string[]]$Repositories) {
-    if ([string]::IsNullOrWhiteSpace($GitHubUser) -or $Repositories.Count -eq 0) { return }
-    $trackerPath = Find-CompletionTrackerPath
-    if ($null -eq $trackerPath) {
-        Write-RunLog "TRACKER not found on any of: $($completionTrackerDriveLetters -join ', ')"
-        return
+function Set-SharedLogDirectory([string]$Directory) {
+    $script:logDirectory = $Directory
+    $userName = ($env:USERNAME -replace '[^A-Za-z0-9._-]', '_')
+    $timestamp = $script:logStartedAt.ToString('yyyyMMdd-HHmmss')
+    $script:logPath = Join-Path $script:logDirectory "${userName}_${timestamp}_0-repos.log"
+    Write-RunLog "RUN START User=$env:USERNAME; Machine=$env:COMPUTERNAME; Log=$script:logPath"
+}
+
+function Rename-SharedLog([int]$RepositoryCount) {
+    $userName = ($env:USERNAME -replace '[^A-Za-z0-9._-]', '_')
+    $timestamp = $script:logStartedAt.ToString('yyyyMMdd-HHmmss')
+    $newPath = Join-Path $script:logDirectory "${userName}_${timestamp}_${RepositoryCount}-repos.log"
+    if ($newPath -eq $script:logPath) { return }
+    try {
+        Move-Item -LiteralPath $script:logPath -Destination $newPath -Force
+        $script:logPath = $newPath
+    } catch {
+        Write-RunLog "LOG RENAME FAILED: $($_.Exception.Message)"
     }
-    $maxAttempts = 30
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        $stream = $null
-        try {
-            $stream = [System.IO.File]::Open($trackerPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-            $reader = New-Object System.IO.StreamReader($stream)
-            $raw = $reader.ReadToEnd()
-            $data = [ordered]@{}
-            if (-not [string]::IsNullOrWhiteSpace($raw)) {
-                foreach ($property in ($raw | ConvertFrom-Json).PSObject.Properties) { $data[$property.Name] = $property.Value }
-            }
-            $existingRepos = if ($data.Contains($GitHubUser)) { @($data[$GitHubUser].Repositories) } else { @() }
-            $data[$GitHubUser] = [ordered]@{
-                LastUpdated  = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-                Machine      = $env:COMPUTERNAME
-                Repositories = @($existingRepos + $Repositories | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
-            }
-            $stream.SetLength(0)
-            $writer = New-Object System.IO.StreamWriter($stream)
-            $writer.Write(($data | ConvertTo-Json -Depth 6))
-            $writer.Flush()
-            Write-RunLog "TRACKER updated $trackerPath for $GitHubUser ($($Repositories.Count) repo(s) this run)"
-            return
-        } catch [System.IO.IOException] {
-            Start-Sleep -Milliseconds 400
-        } catch {
-            Write-RunLog "TRACKER update failed: $($_.Exception.Message)"
-            return
-        } finally {
-            if ($null -ne $stream) { $stream.Close() }
+}
+
+function Initialize-SharedLogging {
+    $directory = Find-SharedLogDirectory
+    while ($null -eq $directory) {
+        [System.Windows.MessageBox]::Show('The shared Local Git Migration Tool log folder is unavailable. Select the 08_IT folder on your Silverstone drive so the tool can save diagnostic logs.', 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
+        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dialog.Description = 'Select the 08_IT folder on your Silverstone drive'
+        if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return $false }
+        if ((Split-Path -Leaf $dialog.SelectedPath) -ne '08_IT') {
+            [System.Windows.MessageBox]::Show('Select the folder named 08_IT, not one of its subfolders.', 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
+            continue
+        }
+        $candidate = Join-Path $dialog.SelectedPath $sharedLogRelativePath
+        if (Test-SharedLogDirectory $candidate) { $directory = $candidate }
+        else {
+            [System.Windows.MessageBox]::Show("Could not write to $candidate. Check the Silverstone drive connection and permissions, then try again.", 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
         }
     }
-    Write-RunLog "TRACKER could not acquire an exclusive lock on $trackerPath after $maxAttempts attempts"
+    Set-SharedLogDirectory $directory
+    return $true
 }
 
 function Set-Step([int]$Step) {
@@ -239,11 +252,18 @@ function Find-Repositories([string]$Root) {
 }
 
 function Target-Exists([string]$Url) {
-    & git ls-remote $Url 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) { return 'Warning: target unavailable or no read access' }
+    $output = @(& git ls-remote $Url 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        Write-RunLog "TARGET CHECK FAILED $Url | $($output -join ' ')"
+        return 'Warning: target unavailable or no read access'
+    }
     $repository = $Url.Replace($gitHubPrefix, '').Replace('.git', '')
-    $canPush = [string](& $script:ghCommand api "repos/$organisation/$repository" --jq '.permissions.push' 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $canPush.Trim() -ne 'true') { return 'Warning: no GitHub write permission' }
+    $canPushOutput = @(& $script:ghCommand api "repos/$organisation/$repository" --jq '.permissions.push' 2>&1)
+    $canPush = [string]$canPushOutput[0]
+    if ($LASTEXITCODE -ne 0 -or $canPush.Trim() -ne 'true') {
+        Write-RunLog "TARGET WRITE CHECK FAILED $Url | $($canPushOutput -join ' ')"
+        return 'Warning: no GitHub write permission'
+    }
     return 'Available'
 }
 
@@ -415,14 +435,17 @@ function Scan-Repositories {
 }
 
 function Verify-Access {
-    $gitVersion = [string](& git --version 2>$null)
+    $gitVersion = [string](& git --version 2>&1)
     if ($LASTEXITCODE -ne 0) { Show-Message -Id 'GitNotInstalled' -Control $controls.AccessStatus | Out-Null; return $false }
-    $user = [string](& $script:ghCommand api user --jq '.login' 2>$null)
+    $userOutput = @(& $script:ghCommand api user --jq '.login' 2>&1)
+    $user = [string]$userOutput[0]
     $userExitCode = $LASTEXITCODE
-    if ($userExitCode -ne 0) { Show-Message -Id 'SignInNotCompleted' -Control $controls.AccessStatus | Out-Null; return $false }
-    $state = [string](& $script:ghCommand api "user/memberships/orgs/$organisation" --jq '.state' 2>$null)
+    if ($userExitCode -ne 0) { Write-RunLog "GITHUB USER CHECK FAILED | $($userOutput -join ' ')"; Show-Message -Id 'SignInNotCompleted' -Control $controls.AccessStatus | Out-Null; return $false }
+    $stateOutput = @(& $script:ghCommand api "user/memberships/orgs/$organisation" --jq '.state' 2>&1)
+    $state = [string]$stateOutput[0]
     $stateExitCode = $LASTEXITCODE
     if ($stateExitCode -ne 0) {
+        Write-RunLog "GITHUB ORGANISATION CHECK FAILED | $($stateOutput -join ' ')"
         Show-Message -Id 'OrgMembershipUnconfirmed' -Control $controls.AccessStatus -FormatArgs @($user.Trim(), $organisation) | Out-Null
         return $false
     }
@@ -456,14 +479,15 @@ function Update-SelectedRemotes {
         $repository = $selected[$index]
         Show-Message -Id 'UpdateProgressMsg' -Control $controls.ProgressStatus -FormatArgs @(($index + 1), $selected.Count, $repository.Name) | Out-Null
         $window.Dispatcher.Invoke([Action]{}, [System.Windows.Threading.DispatcherPriority]::Background)
-        & git -C $repository.Path remote set-url origin $repository.New 2>$null
+        $gitOutput = @(& git -C $repository.Path remote set-url origin $repository.New 2>&1)
         if ($LASTEXITCODE -eq 0) {
             $script:lastUpdatedRepositories.Add($repository)
             $results.Add([pscustomobject]@{ Name = $repository.Name; Path = $repository.Path; Result = 'Succeeded'; Details = 'Origin updated to GitHub.' })
             Write-RunLog "UPDATED $($repository.Path) | $($repository.Current) -> $($repository.New)"
         } else {
-            $results.Add([pscustomobject]@{ Name = $repository.Name; Path = $repository.Path; Result = 'Failed'; Details = 'Git could not update this origin.' })
-            Write-RunLog "FAILED $($repository.Path) | could not update origin"
+            $details = "Git could not update this origin: $($gitOutput -join ' ')"
+            $results.Add([pscustomobject]@{ Name = $repository.Name; Path = $repository.Path; Result = 'Failed'; Details = $details })
+            Write-RunLog "FAILED $($repository.Path) | $($gitOutput -join ' ')"
         }
         $controls.UpdateProgress.Value = $index + 1
     }
@@ -472,8 +496,7 @@ function Update-SelectedRemotes {
     $notUpdated = @($results | Where-Object Result -eq 'Not updated').Count
     $updateSummaryId = if ($failed -gt 0) { 'UpdateSummaryWithFailures' } else { 'UpdateSummarySuccess' }
     Show-Message -Id $updateSummaryId -Control $controls.SummaryStatus -FormatArgs @($successful, $failed, $notUpdated) | Out-Null
-    $succeededRepoNames = @($results | Where-Object Result -eq 'Succeeded' | ForEach-Object { $_.Name })
-    Update-CompletionTracker -GitHubUser $script:githubUser -Repositories $succeededRepoNames
+    Rename-SharedLog $successful
     $controls.RollbackButton.Visibility = if ($script:lastUpdatedRepositories.Count -gt 0) { 'Visible' } else { 'Collapsed' }
     $controls.LogPathText.Text = "Support log: $script:logPath"
     Set-Step 5
@@ -515,6 +538,11 @@ $controls.NextButton.Add_Click({
     elseif ($script:currentStep -eq 3) { Update-SelectedRemotes }
 })
 $controls.BackButton.Add_Click({ if ($script:currentStep -eq 2) { Set-Step 1 }; if ($script:currentStep -eq 3) { Set-Step 2 } })
-Update-ForkStatusDisplay | Out-Null
-Set-Step 1
-if (-not $NoGui) { $window.ShowDialog() | Out-Null }
+if (-not $NoGui -and (Initialize-SharedLogging)) {
+    Update-ForkStatusDisplay | Out-Null
+    Set-Step 1
+    $window.ShowDialog() | Out-Null
+} elseif ($NoGui) {
+    Update-ForkStatusDisplay | Out-Null
+    Set-Step 1
+}
