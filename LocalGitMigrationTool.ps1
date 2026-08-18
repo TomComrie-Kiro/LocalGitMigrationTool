@@ -198,13 +198,27 @@ function Rename-SharedLog([int]$RepositoryCount) {
     }
 }
 
+function Get-LocalLogDirectory {
+    Join-Path $env:LOCALAPPDATA 'KiroRaceCo\LocalGitMigrationTool\Log'
+}
+
 function Initialize-SharedLogging {
     $directory = Find-SharedLogDirectory
     while ($null -eq $directory) {
-        [System.Windows.MessageBox]::Show('The shared Local Git Migration Tool log folder is unavailable. Select the 08_IT folder on your Silverstone drive so the tool can save diagnostic logs.', 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
+        $response = [System.Windows.MessageBox]::Show('The shared Local Git Migration Tool log folder is unavailable. Click Yes to browse for the 08_IT folder on your Silverstone drive, or No to save diagnostic logs locally on this machine instead.', 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
+        if ($response -ne [System.Windows.MessageBoxResult]::Yes) {
+            $localDirectory = Get-LocalLogDirectory
+            New-Item -ItemType Directory -Path $localDirectory -Force -ErrorAction SilentlyContinue | Out-Null
+            if (Test-SharedLogDirectory $localDirectory) {
+                $directory = $localDirectory
+                break
+            }
+            [System.Windows.MessageBox]::Show("Could not create or write to $localDirectory. The tool cannot start without a location to save logs.", 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+            return $false
+        }
         $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
         $dialog.Description = 'Select the 08_IT folder on your Silverstone drive'
-        if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return $false }
+        if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { continue }
         if ((Split-Path -Leaf $dialog.SelectedPath) -ne '08_IT') {
             [System.Windows.MessageBox]::Show('Select the folder named 08_IT, not one of its subfolders.', 'Local Git Migration Tool', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
             continue
