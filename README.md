@@ -5,7 +5,7 @@ A small Windows wizard for changing GitLab `origin` remotes in existing local re
 ## Use
 
 1. Run `LocalGitMigrationTool.exe` and approve the Windows UAC prompt. The executable requests administrator permission at startup so it can install GitHub CLI when required.
-2. Click **Sign in and verify access**. If GitHub CLI is missing, approve the elevated Winget installation. Then complete browser sign-in with the company GitHub account. Confirm the account name shown by the wizard is the account that accepted the `Kiro-Race-Co` invitation. The wizard also checks whether Fork itself has a GitHub account configured; if it does not, open Fork → Preferences → Accounts, add your GitHub account, then click **Re-check Fork** before continuing.
+2. Click **Sign in and verify access**. If GitHub CLI is missing, approve the elevated Winget installation. Then complete browser sign-in with the company GitHub account. Confirm the account name shown by the wizard is the account that accepted the `Kiro-Race-Co` invitation. The wizard also checks whether Fork itself has a GitHub account configured; if it does not, open Fork → File → Accounts, add your GitHub account, then click **Re-check Fork** before continuing.
 3. Add every folder where the developer stores repositories.
 4. Review the current and new origins. The tool verifies that each target GitHub repository is accessible and warns when it is not.
 5. Update the selected remotes and review the success/failure summary.

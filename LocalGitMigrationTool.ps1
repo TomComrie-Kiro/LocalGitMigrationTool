@@ -31,8 +31,8 @@ $script:messages = @{
     'GitHubCliInstallFailed'    = @{ Severity = 'Fatal';   Text = 'GitHub CLI could not be installed. Contact Tom Comrie for assistance.' }
     'ForkNotInstalled'          = @{ Severity = 'Info';    Text = 'Fork was not detected on this machine; skipping the Fork account check.' }
     'ForkFound'                 = @{ Severity = 'Info';    Text = 'Fork has a GitHub account configured.' }
-    'ForkNotFound'              = @{ Severity = 'Warning'; Text = 'Fork does not have a GitHub account configured. Open Fork -> Preferences -> Accounts, add your GitHub account, then click Re-check Fork.' }
-    'ForkCouldNotVerify'        = @{ Severity = 'Info';    Text = "Could not verify Fork's GitHub account automatically. Check Fork -> Preferences -> Accounts manually." }
+    'ForkNotFound'              = @{ Severity = 'Warning'; Text = 'Fork does not have a GitHub account configured. Open Fork -> File -> Accounts, add your GitHub account, then click Re-check Fork.' }
+    'ForkCouldNotVerify'        = @{ Severity = 'Info';    Text = "Could not verify Fork's GitHub account automatically. Check Fork -> File -> Accounts manually." }
     'ScanComplete'              = @{ Severity = 'Info';    Text = '{0} local Git repository(s) checked; {1} with a GitLab origin found; {2} target repository(s) are available on GitHub.' }
     'UpdateProgressMsg'         = @{ Severity = 'Info';    Text = 'Updating {0} of {1}: {2}' }
     'UpdateSummarySuccess'      = @{ Severity = 'Info';    Text = '{0} repository(s) updated successfully; {1} failed; {2} not updated. Refresh Fork to use the new remotes.' }
